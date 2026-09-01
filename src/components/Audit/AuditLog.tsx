@@ -13,23 +13,17 @@ import { useAuth } from '../../contexts/AuthContext';
 const EVENT_LABELS: Record<AuditEventType, string> = {
   upload: 'Upload',
   unified_generated: 'Unified generated',
-  s3_archived: 'S3 archived',
-  scheduler_notified: 'Scheduler notified',
 };
 
 const EVENT_BADGE: Record<AuditEventType, string> = {
   upload: 'bg-blue-50 text-blue-700 border-blue-200',
   unified_generated: 'bg-violet-50 text-violet-700 border-violet-200',
-  s3_archived: 'bg-amber-50 text-amber-700 border-amber-200',
-  scheduler_notified: 'bg-teal-50 text-teal-700 border-teal-200',
 };
 
 const FILTERS: { label: string; value: AuditEventType | '' }[] = [
   { label: 'All events', value: '' },
   { label: 'Uploads', value: 'upload' },
   { label: 'Unified generated', value: 'unified_generated' },
-  { label: 'S3 archived', value: 's3_archived' },
-  { label: 'Scheduler notified', value: 'scheduler_notified' },
 ];
 
 function fmtTime(iso: string): string {
@@ -51,12 +45,6 @@ function summarizeDetail(e: AuditEvent): string {
     }
     case 'unified_generated':
       return d.rows != null ? `${d.rows} rows` : '';
-    case 's3_archived':
-      return e.status === 'success' && d.xlsxKey ? String(d.xlsxKey) : String(d.error ?? '');
-    case 'scheduler_notified':
-      return e.status === 'success'
-        ? `HTTP ${d.httpStatus ?? 'ok'}`
-        : String(d.detail ?? `HTTP ${d.httpStatus ?? '?'}`);
     default:
       return '';
   }
@@ -113,8 +101,7 @@ export default function AuditLog() {
         <div className="flex-1">
           <h2 className="text-base font-semibold text-indigo-800">Audit Log</h2>
           <p className="text-sm text-indigo-700 mt-1 leading-relaxed">
-            A chronological record of every upload, unified-file generation, S3 archive, and
-            scheduler notification — who did it, when, and the outcome.
+            A chronological record of every upload and unified-file generation — who did it, when, and the outcome.
           </p>
         </div>
       </div>

@@ -25,6 +25,8 @@ export interface UploadResult {
    * whether to show the "Download Unified XLSX" button.
    */
   unifiedCsvAvailable?: boolean;
+  dateAutoCorrected?: number;
+  timeAutoCorrected?: number;
 }
 
 export interface ErrorRow {

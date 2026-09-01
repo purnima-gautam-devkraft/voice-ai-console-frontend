@@ -113,9 +113,7 @@ export async function fetchStats(): Promise<Stats> {
 
 export type AuditEventType =
   | 'upload'
-  | 'unified_generated'
-  | 's3_archived'
-  | 'scheduler_notified';
+  | 'unified_generated';
 
 export interface AuditEvent {
   id: string;

@@ -266,19 +266,44 @@ export default function FileUpload() {
       {result && (
         <div className="space-y-4">
           {result.success ? (
-            <div className="bg-green-50 border border-green-300 rounded-xl p-4 flex items-start gap-3">
-              <svg className="w-6 h-6 text-green-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <p className="text-sm font-semibold text-green-800">Data uploaded successfully</p>
-                <p className="text-xs text-green-700 mt-0.5">
-                  All {result.totalRows} row{result.totalRows === 1 ? '' : 's'} passed validation.
-                  {result.unifiedCsvAvailable && ' Unified input file generated.'}
-                </p>
+            <>
+              <div className="bg-green-50 border border-green-300 rounded-xl p-4 flex items-start gap-3">
+                <svg className="w-6 h-6 text-green-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-green-800">Data uploaded successfully</p>
+                  <p className="text-xs text-green-700 mt-0.5">
+                    All {result.totalRows} row{result.totalRows === 1 ? '' : 's'} passed validation.
+                    {result.unifiedCsvAvailable && ' Unified input file generated.'}
+                  </p>
+                </div>
               </div>
-            </div>
+              {((result.dateAutoCorrected ?? 0) > 0 || (result.timeAutoCorrected ?? 0) > 0) && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+                  <svg className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Date / time formats auto-corrected in unified file</p>
+                    <ul className="text-xs text-amber-700 mt-1 space-y-0.5 list-disc list-inside">
+                      {(result.dateAutoCorrected ?? 0) > 0 && (
+                        <li>
+                          {result.dateAutoCorrected} row{result.dateAutoCorrected === 1 ? '' : 's'}: date normalised to <strong>YYYY-MM-DD</strong>
+                        </li>
+                      )}
+                      {(result.timeAutoCorrected ?? 0) > 0 && (
+                        <li>
+                          {result.timeAutoCorrected} row{result.timeAutoCorrected === 1 ? '' : 's'}: time normalised to <strong>HH:MM</strong> (24-hour)
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex items-start gap-3">
               <svg className="w-6 h-6 text-red-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

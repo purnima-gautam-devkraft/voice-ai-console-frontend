@@ -280,14 +280,14 @@ export default function FileUpload() {
                   </p>
                 </div>
               </div>
-              {((result.dateAutoCorrected ?? 0) > 0 || (result.timeAutoCorrected ?? 0) > 0) && (
+              {((result.dateAutoCorrected ?? 0) > 0 || (result.timeAutoCorrected ?? 0) > 0 || (result.timezoneAutoCorrected ?? 0) > 0) && (
                 <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
                   <svg className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <div>
-                    <p className="text-sm font-semibold text-amber-800">Date / time formats auto-corrected in unified file</p>
+                    <p className="text-sm font-semibold text-amber-800">Values auto-corrected in unified file</p>
                     <ul className="text-xs text-amber-700 mt-1 space-y-0.5 list-disc list-inside">
                       {(result.dateAutoCorrected ?? 0) > 0 && (
                         <li>
@@ -297,6 +297,11 @@ export default function FileUpload() {
                       {(result.timeAutoCorrected ?? 0) > 0 && (
                         <li>
                           {result.timeAutoCorrected} row{result.timeAutoCorrected === 1 ? '' : 's'}: time normalised to <strong>HH:MM</strong> (24-hour)
+                        </li>
+                      )}
+                      {(result.timezoneAutoCorrected ?? 0) > 0 && (
+                        <li>
+                          {result.timezoneAutoCorrected} row{result.timezoneAutoCorrected === 1 ? '' : 's'}: timezone set from country mapping
                         </li>
                       )}
                     </ul>

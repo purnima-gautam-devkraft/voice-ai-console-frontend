@@ -27,6 +27,7 @@ export interface UploadResult {
   unifiedCsvAvailable?: boolean;
   dateAutoCorrected?: number;
   timeAutoCorrected?: number;
+  timezoneAutoCorrected?: number;
 }
 
 export interface ErrorRow {

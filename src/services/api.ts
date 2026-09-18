@@ -84,13 +84,26 @@ export async function fetchAgentMapping(): Promise<{ agents: AgentMapping[]; tot
 }
 
 export interface TelephonyProviderRow {
+  id?: string;
   providerName: string;
   fromNumber: string;
+  country: string;
 }
 
 export async function fetchTelephonyProviders(): Promise<{ providers: TelephonyProviderRow[]; total: number }> {
   const res = await api.get('/data/telephony-providers');
   return res.data;
+}
+
+export async function createTelephonyProvider(
+  providerName: string, fromNumber: string, country: string
+): Promise<{ provider: TelephonyProviderRow }> {
+  const res = await api.post('/data/telephony-providers', { providerName, fromNumber, country });
+  return res.data;
+}
+
+export async function deleteTelephonyProvider(id: string): Promise<void> {
+  await api.delete(`/data/telephony-providers/${id}`);
 }
 
 export async function fetchUploadHistory(filters?: {

@@ -1,3 +1,10 @@
+export interface TimezoneWarning {
+  country: string;
+  suppliedTimezone: string;
+  correctTimezone: string;
+  rowCount: number;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -27,7 +34,7 @@ export interface UploadResult {
   unifiedCsvAvailable?: boolean;
   dateAutoCorrected?: number;
   timeAutoCorrected?: number;
-  timezoneAutoCorrected?: number;
+  timezoneWarnings?: TimezoneWarning[];
 }
 
 export interface ErrorRow {

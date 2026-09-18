@@ -1,8 +1,71 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { uploadAgentData, downloadErrorReport, downloadUnifiedForUpload } from '../../services/api';
-import { University, UploadResult, AgentUseCase, AGENT_USE_CASES, AGENT_DISPLAY_NAMES, UNIVERSITIES, UNIVERSITY_NAMES } from '../../types';
+import { University, UploadResult, AgentUseCase, AGENT_USE_CASES, AGENT_DISPLAY_NAMES, UNIVERSITIES, UNIVERSITY_NAMES, TimezoneWarning } from '../../types';
 import Button from '../Common/Button';
+
+interface TimezoneConfirmModalProps {
+  warnings: TimezoneWarning[];
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function TimezoneConfirmModal({ warnings, onConfirm, onCancel }: TimezoneConfirmModalProps) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div className="flex items-start gap-3 px-6 pt-5 pb-4 border-b border-gray-100">
+          <div className="shrink-0 w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center mt-0.5">
+            <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Timezone Mismatch Found</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              The following rows have a timezone that doesn't match the expected value for the destination country.
+              Confirm to auto-correct and generate the unified file.
+            </p>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 space-y-2 max-h-64 overflow-y-auto">
+          {warnings.map((w, i) => (
+            <div key={i} className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <span className="font-medium text-gray-800">{w.country}</span>
+                <span className="text-xs text-gray-500">{w.rowCount} row{w.rowCount === 1 ? '' : 's'}</span>
+              </div>
+              <div className="mt-1.5 flex items-center gap-2 text-xs text-amber-800">
+                <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono">{w.suppliedTimezone}</span>
+                <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">{w.correctTimezone}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            Cancel — fix source file
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+          >
+            Fix & Generate Unified File
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function FileUpload() {
   const { user } = useAuth();
@@ -31,6 +94,7 @@ export default function FileUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState('');
+  const [timezoneWarnings, setTimezoneWarnings] = useState<TimezoneWarning[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const programs = university ? UNIVERSITIES[university] : [];
@@ -58,15 +122,21 @@ export default function FileUpload() {
     }
   };
 
-  const handleUpload = async () => {
+  const doUpload = async (confirmCorrections = false) => {
     if (!file || !university || !program || !agentType || !callType) return;
     setIsUploading(true);
     setError('');
     setResult(null);
+    setTimezoneWarnings(null);
 
     try {
-      const res = await uploadAgentData(file, university, program, agentType, callType);
-      setResult(res);
+      const res = await uploadAgentData(file, university, program, agentType, callType, confirmCorrections);
+      // If backend returned timezone warnings and hasn't generated the unified file yet, show modal
+      if (res.timezoneWarnings && res.timezoneWarnings.length > 0 && !res.unifiedCsvAvailable) {
+        setTimezoneWarnings(res.timezoneWarnings);
+      } else {
+        setResult(res);
+      }
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
@@ -77,15 +147,29 @@ export default function FileUpload() {
     }
   };
 
+  const handleUpload = () => doUpload(false);
+  const handleConfirmCorrections = () => {
+    setTimezoneWarnings(null);
+    doUpload(true);
+  };
+
   const handleReset = () => {
     setFile(null);
     setResult(null);
     setError('');
+    setTimezoneWarnings(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
     <div className="space-y-6">
+      {timezoneWarnings && timezoneWarnings.length > 0 && (
+        <TimezoneConfirmModal
+          warnings={timezoneWarnings}
+          onConfirm={handleConfirmCorrections}
+          onCancel={() => setTimezoneWarnings(null)}
+        />
+      )}
       {/* Filters */}
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Upload Filters</h3>
@@ -280,14 +364,14 @@ export default function FileUpload() {
                   </p>
                 </div>
               </div>
-              {((result.dateAutoCorrected ?? 0) > 0 || (result.timeAutoCorrected ?? 0) > 0 || (result.timezoneAutoCorrected ?? 0) > 0) && (
+              {((result.dateAutoCorrected ?? 0) > 0 || (result.timeAutoCorrected ?? 0) > 0) && (
                 <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
                   <svg className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <div>
-                    <p className="text-sm font-semibold text-amber-800">Values auto-corrected in unified file</p>
+                    <p className="text-sm font-semibold text-amber-800">Date / time formats auto-corrected in unified file</p>
                     <ul className="text-xs text-amber-700 mt-1 space-y-0.5 list-disc list-inside">
                       {(result.dateAutoCorrected ?? 0) > 0 && (
                         <li>
@@ -297,11 +381,6 @@ export default function FileUpload() {
                       {(result.timeAutoCorrected ?? 0) > 0 && (
                         <li>
                           {result.timeAutoCorrected} row{result.timeAutoCorrected === 1 ? '' : 's'}: time normalised to <strong>HH:MM</strong> (24-hour)
-                        </li>
-                      )}
-                      {(result.timezoneAutoCorrected ?? 0) > 0 && (
-                        <li>
-                          {result.timezoneAutoCorrected} row{result.timezoneAutoCorrected === 1 ? '' : 's'}: timezone set from country mapping
                         </li>
                       )}
                     </ul>

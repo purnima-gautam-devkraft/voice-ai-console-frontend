@@ -52,7 +52,8 @@ export async function uploadAgentData(
   university: string,
   program: string,
   agentType: AgentUseCase,
-  callType: 'Live' | 'Test'
+  callType: 'Live' | 'Test',
+  confirmCorrections = false
 ): Promise<UploadResult> {
   const formData = new FormData();
   formData.append('file', file);
@@ -60,6 +61,7 @@ export async function uploadAgentData(
   formData.append('program', program);
   formData.append('agentType', agentType);
   formData.append('callType', callType);
+  if (confirmCorrections) formData.append('confirmCorrections', 'true');
 
   const res = await api.post('/upload/agent-data', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

@@ -42,6 +42,8 @@ export interface UploadResult {
   unifiedCsvAvailable?: boolean;
   dateAutoCorrected?: number;
   timeAutoCorrected?: number;
+  fromNumberNormalized?: number;
+  countryNameNormalized?: number;
   timezoneWarnings?: TimezoneWarning[];
   contactCountryWarnings?: ContactCountryWarning[];
 }

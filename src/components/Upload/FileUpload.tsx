@@ -1,143 +1,270 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { uploadAgentData, downloadErrorReport, downloadUnifiedForUpload } from '../../services/api';
-import { University, UploadResult, AgentUseCase, AGENT_USE_CASES, AGENT_DISPLAY_NAMES, UNIVERSITIES, UNIVERSITY_NAMES, TimezoneWarning, ContactCountryWarning } from '../../types';
+import { University, UploadResult, AgentUseCase, AGENT_USE_CASES, AGENT_DISPLAY_NAMES, UNIVERSITIES, UNIVERSITY_NAMES } from '../../types';
 import Button from '../Common/Button';
 
-interface TimezoneConfirmModalProps {
-  warnings: TimezoneWarning[];
+// ── Unified Validation Review Modal ──────────────────────────────────────────
+// Shows ALL errors and ALL proposed auto-corrections in one view.
+// If errors exist the user must fix the file; if only corrections exist they
+// can confirm all of them at once to proceed with file generation.
+
+interface ValidationReviewModalProps {
+  pending: UploadResult;
   onConfirm: () => void;
   onCancel: () => void;
+  isConfirming: boolean;
 }
 
-function TimezoneConfirmModal({ warnings, onConfirm, onCancel }: TimezoneConfirmModalProps) {
+function ValidationReviewModal({ pending, onConfirm, onCancel, isConfirming }: ValidationReviewModalProps) {
+  const hasErrors   = pending.errorRows > 0;
+  const tzWarnings  = pending.timezoneWarnings ?? [];
+  const ccWarnings  = pending.contactCountryWarnings ?? [];
+  const hasChanges  = tzWarnings.length > 0 || ccWarnings.length > 0
+    || (pending.dateAutoCorrected ?? 0) > 0
+    || (pending.timeAutoCorrected ?? 0) > 0
+    || (pending.fromNumberNormalized ?? 0) > 0
+    || (pending.countryNameNormalized ?? 0) > 0;
+
+  const canProceed = !hasErrors && hasChanges;
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-        <div className="flex items-start gap-3 px-6 pt-5 pb-4 border-b border-gray-100">
-          <div className="shrink-0 w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center mt-0.5">
-            <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+
+        {/* Header */}
+        <div className="flex items-start gap-3 px-6 pt-5 pb-4 border-b border-gray-100 shrink-0">
+          <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center mt-0.5 ${
+            hasErrors ? 'bg-red-100' : 'bg-amber-100'
+          }`}>
+            {hasErrors ? (
+              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            )}
           </div>
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">Timezone Mismatch Found</h2>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-semibold text-gray-900">Validation Review</h2>
             <p className="text-sm text-gray-500 mt-0.5">
-              The following rows have a timezone that doesn't match the expected value for the destination country.
-              Confirm to auto-correct and generate the unified file.
+              {hasErrors
+                ? `${pending.errorRows} row${pending.errorRows === 1 ? '' : 's'} failed validation — fix the source file and re-upload.`
+                : 'Review the changes below and confirm to generate the unified file.'}
             </p>
+          </div>
+          {/* Counts pill row */}
+          <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+            <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 font-medium">
+              {pending.totalRows} total
+            </span>
+            {hasErrors && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-red-100 text-red-700 font-medium">
+                {pending.errorRows} error{pending.errorRows === 1 ? '' : 's'}
+              </span>
+            )}
+            {hasChanges && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">
+                {pending.validRows} valid
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="px-6 py-4 space-y-2 max-h-64 overflow-y-auto">
-          {warnings.map((w, i) => (
-            <div key={i} className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <span className="font-medium text-gray-800">{w.country}</span>
-                <span className="text-xs text-gray-500">{w.rowCount} row{w.rowCount === 1 ? '' : 's'}</span>
-              </div>
-              <div className="mt-1.5 flex items-center gap-2 text-xs text-amber-800">
-                <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono">{w.suppliedTimezone}</span>
-                <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+
+          {/* ── Error rows ─────────────────────────────────── */}
+          {hasErrors && (
+            <section>
+              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
                 </svg>
-                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">{w.correctTimezone}</span>
+                Validation Errors — must fix before proceeding
+              </h3>
+              <div className="border border-red-200 rounded-xl overflow-hidden">
+                <div className="overflow-x-auto max-h-52 overflow-y-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-red-50 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-red-100 whitespace-nowrap">Row #</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-red-100 whitespace-nowrap">User ID</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-red-100">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-red-50">
+                      {pending.errors.map((err, i) => (
+                        <tr key={i} className="hover:bg-red-50">
+                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{err.rowNumber}</td>
+                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{err.data['user_id'] || '—'}</td>
+                          <td className="px-3 py-2 text-red-700">{err.errorMessage}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            </section>
+          )}
 
-        <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            Cancel — fix source file
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
-          >
-            Fix & Generate Unified File
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface ContactCountryConfirmModalProps {
-  warnings: ContactCountryWarning[];
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function ContactCountryConfirmModal({ warnings, onConfirm, onCancel }: ContactCountryConfirmModalProps) {
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-        <div className="flex items-start gap-3 px-6 pt-5 pb-4 border-b border-gray-100">
-          <div className="shrink-0 w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center mt-0.5">
-            <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.948V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">Contact Number Country Mismatch</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              The country code in <strong>user_contact</strong> doesn't match <strong>user_country_of_residence</strong>.
-              Do you want to update the country and timezone to match the contact number's country code?
-            </p>
-          </div>
-        </div>
-
-        <div className="px-6 py-4 space-y-3 max-h-72 overflow-y-auto">
-          {warnings.map((w, i) => (
-            <div key={i} className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 text-sm">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs text-gray-500">{w.rowCount} row{w.rowCount === 1 ? '' : 's'}</span>
-              </div>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500 w-28 shrink-0">Contact suggests:</span>
-                  <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">{w.detectedCountry}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500 w-28 shrink-0">File has country:</span>
-                  <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono">{w.suppliedCountry}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500 w-28 shrink-0">File has timezone:</span>
-                  <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono">{w.suppliedTimezone}</span>
-                </div>
-                {w.suggestedTimezone && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500 w-28 shrink-0">Will update to:</span>
-                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">{w.detectedCountry}</span>
-                    <span className="text-gray-400">+</span>
-                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">{w.suggestedTimezone}</span>
+          {/* ── Auto-applied changes (informational) ────────── */}
+          {((pending.dateAutoCorrected ?? 0) > 0 || (pending.timeAutoCorrected ?? 0) > 0
+            || (pending.fromNumberNormalized ?? 0) > 0 || (pending.countryNameNormalized ?? 0) > 0) && (
+            <section>
+              <h3 className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                </svg>
+                Auto-applied corrections (no confirmation needed)
+              </h3>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 space-y-1.5">
+                {(pending.countryNameNormalized ?? 0) > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-blue-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                    <strong>{pending.countryNameNormalized}</strong> row{pending.countryNameNormalized === 1 ? '' : 's'}: country name spelling corrected to canonical form (e.g. <span className="font-mono bg-blue-100 px-1 rounded">vietnam</span> → <span className="font-mono bg-blue-100 px-1 rounded">Vietnam</span>)
+                  </div>
+                )}
+                {(pending.fromNumberNormalized ?? 0) > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-blue-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                    <strong>{pending.fromNumberNormalized}</strong> row{pending.fromNumberNormalized === 1 ? '' : 's'}: from_number normalised (added leading <span className="font-mono bg-blue-100 px-1 rounded">0</span> for India / <span className="font-mono bg-blue-100 px-1 rounded">+</span> for international)
+                  </div>
+                )}
+                {(pending.dateAutoCorrected ?? 0) > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-blue-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                    <strong>{pending.dateAutoCorrected}</strong> row{pending.dateAutoCorrected === 1 ? '' : 's'}: date format normalised to <span className="font-mono bg-blue-100 px-1 rounded">YYYY-MM-DD</span>
+                  </div>
+                )}
+                {(pending.timeAutoCorrected ?? 0) > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-blue-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                    <strong>{pending.timeAutoCorrected}</strong> row{pending.timeAutoCorrected === 1 ? '' : 's'}: time format normalised to <span className="font-mono bg-blue-100 px-1 rounded">HH:MM</span> (24-hour)
                   </div>
                 )}
               </div>
-            </div>
-          ))}
+            </section>
+          )}
+
+          {/* ── Contact-country mismatch (needs confirmation) ── */}
+          {ccWarnings.length > 0 && (
+            <section>
+              <h3 className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.948V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+                Contact number country mismatch — will be corrected
+              </h3>
+              <div className="space-y-2">
+                {ccWarnings.map((w, i) => (
+                  <div key={i} className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-orange-900">
+                        {w.rowCount} row{w.rowCount === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      <div className="text-gray-500">Contact code suggests</div>
+                      <div><span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">{w.detectedCountry}</span></div>
+                      <div className="text-gray-500">File country</div>
+                      <div><span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono">{w.suppliedCountry}</span></div>
+                      <div className="text-gray-500">File timezone</div>
+                      <div><span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono">{w.suppliedTimezone}</span></div>
+                      {w.suggestedTimezone && (
+                        <>
+                          <div className="text-gray-500 font-medium text-orange-700">Will update to</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">{w.detectedCountry}</span>
+                            <span className="text-gray-400">+</span>
+                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">{w.suggestedTimezone}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Timezone mismatch (needs confirmation) ──────── */}
+          {tzWarnings.length > 0 && (
+            <section>
+              <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Timezone mismatch — will be corrected
+              </h3>
+              <div className="space-y-2">
+                {tzWarnings.map((w, i) => (
+                  <div key={i} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-medium text-amber-900">{w.country}</span>
+                      <span className="text-xs text-gray-500">{w.rowCount} row{w.rowCount === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono">{w.suppliedTimezone}</span>
+                      <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">{w.correctTimezone}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Edge case: no errors, no changes */}
+          {!hasErrors && !hasChanges && (
+            <p className="text-sm text-gray-500 text-center py-4">No issues found — all rows passed validation.</p>
+          )}
         </div>
 
-        <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+        {/* Footer */}
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
           <button
             onClick={onCancel}
-            className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+            disabled={isConfirming}
+            className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
           >
-            No — keep as-is in file
+            {hasErrors ? 'Close — fix errors in source file' : 'Cancel'}
           </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700"
-          >
-            Yes — update country &amp; timezone
-          </button>
+          {canProceed && (
+            <button
+              onClick={onConfirm}
+              disabled={isConfirming}
+              className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {isConfirming && (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              )}
+              {isConfirming ? 'Generating…' : 'Apply Changes & Generate Unified File'}
+            </button>
+          )}
+          {hasErrors && (
+            <button
+              onClick={() => downloadErrorReport(pending.uploadId)}
+              className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download Error Report
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -169,10 +296,10 @@ export default function FileUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
+  const [pendingReview, setPendingReview] = useState<UploadResult | null>(null);
   const [error, setError] = useState('');
-  const [timezoneWarnings, setTimezoneWarnings] = useState<TimezoneWarning[] | null>(null);
-  const [contactCountryWarnings, setContactCountryWarnings] = useState<ContactCountryWarning[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const programs = university ? UNIVERSITIES[university] : [];
@@ -200,32 +327,39 @@ export default function FileUpload() {
     }
   };
 
+  // Phase 1: validate the file — always show the review modal if anything needs attention.
   const doUpload = async (confirmCorrections = false, confirmContactCorrections = false) => {
     if (!file || !university || !program || !agentType || !callType) return;
-    setIsUploading(true);
+    const isInitial = !confirmCorrections && !confirmContactCorrections;
+    if (isInitial) {
+      setIsUploading(true);
+    } else {
+      setIsConfirming(true);
+    }
     setError('');
-    setResult(null);
-    setTimezoneWarnings(null);
-    setContactCountryWarnings(null);
 
     try {
       const res = await uploadAgentData(file, university, program, agentType, callType, confirmCorrections, confirmContactCorrections);
 
-      // Hard validation errors (e.g. calling-hours violation) always take priority —
-      // skip warning popups entirely and show the error table immediately.
-      if (res.errorRows > 0) {
-        setResult(res);
-      // Phase 1: contact-country mismatch
-      } else if (res.contactCountryWarnings && res.contactCountryWarnings.length > 0 && !res.unifiedCsvAvailable) {
-        setContactCountryWarnings(res.contactCountryWarnings);
-        // Stash timezone warnings for phase 2 if any
-        if (res.timezoneWarnings && res.timezoneWarnings.length > 0) {
-          setTimezoneWarnings(res.timezoneWarnings);
+      const hasErrors  = res.errorRows > 0;
+      const hasWarnings = (res.contactCountryWarnings?.length ?? 0) > 0 || (res.timezoneWarnings?.length ?? 0) > 0;
+      const hasChanges  = hasWarnings
+        || (res.dateAutoCorrected ?? 0) > 0
+        || (res.timeAutoCorrected ?? 0) > 0
+        || (res.fromNumberNormalized ?? 0) > 0
+        || (res.countryNameNormalized ?? 0) > 0;
+
+      // Show the review modal when there's anything to surface (errors or changes),
+      // and the file hasn't been generated yet.
+      if ((hasErrors || hasChanges) && !res.unifiedCsvAvailable) {
+        setPendingReview(res);
+        if (!isInitial) {
+          // Shouldn't happen (backend should have generated the file), but guard anyway.
+          setResult(res);
+          setPendingReview(null);
         }
-      // Phase 2: timezone mismatch
-      } else if (res.timezoneWarnings && res.timezoneWarnings.length > 0 && !res.unifiedCsvAvailable) {
-        setTimezoneWarnings(res.timezoneWarnings);
       } else {
+        setPendingReview(null);
         setResult(res);
       }
     } catch (err: unknown) {
@@ -235,47 +369,46 @@ export default function FileUpload() {
       setError(msg);
     } finally {
       setIsUploading(false);
+      setIsConfirming(false);
     }
   };
 
-  const handleUpload = () => doUpload(false, false);
-
-  // User confirmed contact-country correction → re-upload with confirmContactCorrections=true
-  // If timezone warnings were also present, they'll come back and show the timezone modal
-  const handleConfirmContactCorrections = () => {
-    setContactCountryWarnings(null);
-    setTimezoneWarnings(null);
-    doUpload(false, true);
+  const handleUpload = () => {
+    setResult(null);
+    setPendingReview(null);
+    doUpload(false, false);
   };
 
-  const handleConfirmCorrections = () => {
-    setTimezoneWarnings(null);
+  // User confirmed all changes — apply everything in one call.
+  const handleConfirmAll = () => {
     doUpload(true, true);
+  };
+
+  const handleCancelReview = () => {
+    setPendingReview(null);
+    // If there were errors show the error result; otherwise just dismiss.
+    if (pendingReview && pendingReview.errorRows > 0) {
+      setResult(pendingReview);
+    }
+    setPendingReview(null);
   };
 
   const handleReset = () => {
     setFile(null);
     setResult(null);
+    setPendingReview(null);
     setError('');
-    setTimezoneWarnings(null);
-    setContactCountryWarnings(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
     <div className="space-y-6">
-      {contactCountryWarnings && contactCountryWarnings.length > 0 && (
-        <ContactCountryConfirmModal
-          warnings={contactCountryWarnings}
-          onConfirm={handleConfirmContactCorrections}
-          onCancel={() => { setContactCountryWarnings(null); setTimezoneWarnings(null); }}
-        />
-      )}
-      {!contactCountryWarnings && timezoneWarnings && timezoneWarnings.length > 0 && (
-        <TimezoneConfirmModal
-          warnings={timezoneWarnings}
-          onConfirm={handleConfirmCorrections}
-          onCancel={() => setTimezoneWarnings(null)}
+      {pendingReview && (
+        <ValidationReviewModal
+          pending={pendingReview}
+          onConfirm={handleConfirmAll}
+          onCancel={handleCancelReview}
+          isConfirming={isConfirming}
         />
       )}
       {/* Filters */}
@@ -472,29 +605,6 @@ export default function FileUpload() {
                   </p>
                 </div>
               </div>
-              {((result.dateAutoCorrected ?? 0) > 0 || (result.timeAutoCorrected ?? 0) > 0) && (
-                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
-                  <svg className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div>
-                    <p className="text-sm font-semibold text-amber-800">Date / time formats auto-corrected in unified file</p>
-                    <ul className="text-xs text-amber-700 mt-1 space-y-0.5 list-disc list-inside">
-                      {(result.dateAutoCorrected ?? 0) > 0 && (
-                        <li>
-                          {result.dateAutoCorrected} row{result.dateAutoCorrected === 1 ? '' : 's'}: date normalised to <strong>YYYY-MM-DD</strong>
-                        </li>
-                      )}
-                      {(result.timeAutoCorrected ?? 0) > 0 && (
-                        <li>
-                          {result.timeAutoCorrected} row{result.timeAutoCorrected === 1 ? '' : 's'}: time normalised to <strong>HH:MM</strong> (24-hour)
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                </div>
-              )}
             </>
           ) : (
             <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex items-start gap-3">

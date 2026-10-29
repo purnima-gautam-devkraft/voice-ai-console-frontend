@@ -1,3 +1,21 @@
+export type ChangeType =
+  | 'country_name'
+  | 'from_number'
+  | 'date_format'
+  | 'time_format'
+  | 'timezone'
+  | 'contact_country'
+  | 'time_converted';
+
+export interface ChangeRecord {
+  rowNumber: number;
+  userId: string;
+  changeType: ChangeType;
+  field: string;
+  oldValue: string;
+  newValue: string;
+}
+
 export interface TimezoneWarning {
   country: string;
   suppliedTimezone: string;
@@ -46,6 +64,7 @@ export interface UploadResult {
   countryNameNormalized?: number;
   timezoneWarnings?: TimezoneWarning[];
   contactCountryWarnings?: ContactCountryWarning[];
+  changes?: ChangeRecord[];
 }
 
 export interface ErrorRow {

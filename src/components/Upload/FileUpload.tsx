@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { uploadAgentData, downloadErrorReport, downloadUnifiedForUpload } from '../../services/api';
-import { University, UploadResult, AgentUseCase, AGENT_USE_CASES, AGENT_DISPLAY_NAMES, UNIVERSITIES, UNIVERSITY_NAMES } from '../../types';
+import { University, UploadResult, AgentUseCase, AGENT_USE_CASES, AGENT_DISPLAY_NAMES, UNIVERSITIES, UNIVERSITY_NAMES, ChangeRecord, ChangeType } from '../../types';
 import Button from '../Common/Button';
 
 // ── Unified Validation Review Modal ──────────────────────────────────────────
@@ -266,6 +266,135 @@ function ValidationReviewModal({ pending, onConfirm, onCancel, isConfirming }: V
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Processing Report ─────────────────────────────────────────────────────────
+// Shown after a successful file generation. Groups every field change by type
+// and renders a colour-coded section per group with a scrollable row table.
+
+const CHANGE_META: Record<ChangeType, { label: string; description: string; color: string; bg: string; border: string; badge: string }> = {
+  country_name:    { label: 'Country Name Corrected',     description: 'user_country_of_residence spelling normalised to canonical form',         color: 'text-violet-700', bg: 'bg-violet-50',  border: 'border-violet-200', badge: 'bg-violet-100 text-violet-700' },
+  from_number:     { label: 'From Number Normalised',     description: 'Leading 0 added for India / + prefix added for international numbers',     color: 'text-blue-700',   bg: 'bg-blue-50',    border: 'border-blue-200',   badge: 'bg-blue-100 text-blue-700'   },
+  date_format:     { label: 'Date Format Corrected',      description: 'date_of_call reformatted to YYYY-MM-DD',                                   color: 'text-cyan-700',   bg: 'bg-cyan-50',    border: 'border-cyan-200',   badge: 'bg-cyan-100 text-cyan-700'   },
+  time_format:     { label: 'Time Format Corrected',      description: 'time_of_call reformatted to HH:MM 24-hour',                                color: 'text-teal-700',   bg: 'bg-teal-50',    border: 'border-teal-200',   badge: 'bg-teal-100 text-teal-700'   },
+  timezone:        { label: 'Timezone Corrected',         description: 'timezone updated to canonical IANA value for the destination country',     color: 'text-amber-700',  bg: 'bg-amber-50',   border: 'border-amber-200',  badge: 'bg-amber-100 text-amber-700' },
+  contact_country: { label: 'Country / TZ from Contact', description: 'user_country_of_residence and timezone updated to match contact number code', color: 'text-orange-700', bg: 'bg-orange-50',  border: 'border-orange-200', badge: 'bg-orange-100 text-orange-700'},
+  time_converted:  { label: 'Time Converted (IST → Local)', description: 'time_of_call converted from IST to the destination country\'s local timezone', color: 'text-indigo-700', bg: 'bg-indigo-50',  border: 'border-indigo-200', badge: 'bg-indigo-100 text-indigo-700'},
+};
+
+const CHANGE_ORDER: ChangeType[] = ['country_name', 'from_number', 'date_format', 'time_format', 'timezone', 'contact_country', 'time_converted'];
+
+interface ProcessingReportProps {
+  changes: ChangeRecord[];
+  totalRows: number;
+}
+
+function ProcessingReport({ changes, totalRows }: ProcessingReportProps) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  if (changes.length === 0) return null;
+
+  const grouped = new Map<ChangeType, ChangeRecord[]>();
+  for (const c of changes) {
+    const list = grouped.get(c.changeType) ?? [];
+    list.push(c);
+    grouped.set(c.changeType, list);
+  }
+
+  const affectedRows = new Set(changes.map((c) => c.rowNumber)).size;
+
+  const toggle = (type: ChangeType) =>
+    setExpanded((prev) => ({ ...prev, [type]: !prev[type] }));
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* Report header */}
+      <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-start justify-between gap-4">
+        <div>
+          <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Processing Report
+          </h4>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {changes.length} field change{changes.length === 1 ? '' : 's'} across {affectedRows} of {totalRows} row{totalRows === 1 ? '' : 's'}.
+            Click a section to see row-level details.
+          </p>
+        </div>
+        <span className="text-xs px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 font-medium shrink-0">
+          {grouped.size} change type{grouped.size === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {/* Change group sections */}
+      <div className="divide-y divide-gray-100">
+        {CHANGE_ORDER.filter((t) => grouped.has(t)).map((type) => {
+          const records = grouped.get(type)!;
+          const meta = CHANGE_META[type];
+          const isOpen = !!expanded[type];
+          // Deduplicate rows — for contact_country we get 2 records per row (country + tz)
+          const uniqueRows = new Set(records.map((r) => r.rowNumber)).size;
+
+          return (
+            <div key={type} className={meta.bg}>
+              {/* Section header — always visible, clickable to expand */}
+              <button
+                onClick={() => toggle(type)}
+                className={`w-full text-left px-5 py-3 flex items-center gap-3 hover:brightness-95 transition-all`}
+              >
+                <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full ${meta.badge}`}>
+                  {uniqueRows} row{uniqueRows === 1 ? '' : 's'}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-semibold ${meta.color}`}>{meta.label}</p>
+                  <p className="text-xs text-gray-500 truncate">{meta.description}</p>
+                </div>
+                <svg
+                  className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Expanded detail table */}
+              {isOpen && (
+                <div className={`border-t ${meta.border} overflow-x-auto max-h-60 overflow-y-auto`}>
+                  <table className="min-w-full text-xs">
+                    <thead className={`${meta.bg} sticky top-0`}>
+                      <tr>
+                        <th className={`px-4 py-2 text-left font-semibold text-gray-600 border-b ${meta.border} whitespace-nowrap`}>Row #</th>
+                        <th className={`px-4 py-2 text-left font-semibold text-gray-600 border-b ${meta.border} whitespace-nowrap`}>User ID</th>
+                        <th className={`px-4 py-2 text-left font-semibold text-gray-600 border-b ${meta.border} whitespace-nowrap`}>Field</th>
+                        <th className={`px-4 py-2 text-left font-semibold text-gray-600 border-b ${meta.border}`}>Before</th>
+                        <th className={`px-4 py-2 text-left font-semibold text-gray-600 border-b ${meta.border}`}>After</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100/60">
+                      {records.map((r, i) => (
+                        <tr key={i} className="hover:bg-white/60">
+                          <td className="px-4 py-1.5 text-gray-500 whitespace-nowrap">{r.rowNumber}</td>
+                          <td className="px-4 py-1.5 text-gray-500 whitespace-nowrap max-w-[120px] truncate">{r.userId}</td>
+                          <td className={`px-4 py-1.5 font-mono whitespace-nowrap ${meta.color}`}>{r.field}</td>
+                          <td className="px-4 py-1.5">
+                            <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">{r.oldValue || '(blank)'}</span>
+                          </td>
+                          <td className="px-4 py-1.5">
+                            <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">{r.newValue}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -680,6 +809,11 @@ export default function FileUpload() {
               Upload Another File
             </Button>
           </div>
+
+          {/* Processing report — shown only after a successful generation */}
+          {result.success && result.unifiedCsvAvailable && (result.changes?.length ?? 0) > 0 && (
+            <ProcessingReport changes={result.changes!} totalRows={result.totalRows} />
+          )}
 
           {/* Data preview */}
           {result.data.length > 0 && (

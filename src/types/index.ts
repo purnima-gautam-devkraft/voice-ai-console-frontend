@@ -5,6 +5,14 @@ export interface TimezoneWarning {
   rowCount: number;
 }
 
+export interface ContactCountryWarning {
+  detectedCountry: string;
+  suppliedCountry: string;
+  suppliedTimezone: string;
+  suggestedTimezone: string;
+  rowCount: number;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -35,6 +43,7 @@ export interface UploadResult {
   dateAutoCorrected?: number;
   timeAutoCorrected?: number;
   timezoneWarnings?: TimezoneWarning[];
+  contactCountryWarnings?: ContactCountryWarning[];
 }
 
 export interface ErrorRow {

@@ -211,8 +211,12 @@ export default function FileUpload() {
     try {
       const res = await uploadAgentData(file, university, program, agentType, callType, confirmCorrections, confirmContactCorrections);
 
-      // Phase 1: contact-country mismatch takes priority
-      if (res.contactCountryWarnings && res.contactCountryWarnings.length > 0 && !res.unifiedCsvAvailable) {
+      // Hard validation errors (e.g. calling-hours violation) always take priority —
+      // skip warning popups entirely and show the error table immediately.
+      if (res.errorRows > 0) {
+        setResult(res);
+      // Phase 1: contact-country mismatch
+      } else if (res.contactCountryWarnings && res.contactCountryWarnings.length > 0 && !res.unifiedCsvAvailable) {
         setContactCountryWarnings(res.contactCountryWarnings);
         // Stash timezone warnings for phase 2 if any
         if (res.timezoneWarnings && res.timezoneWarnings.length > 0) {

@@ -53,7 +53,8 @@ export async function uploadAgentData(
   program: string,
   agentType: AgentUseCase,
   callType: 'Live' | 'Test',
-  confirmCorrections = false
+  confirmCorrections = false,
+  confirmContactCorrections = false
 ): Promise<UploadResult> {
   const formData = new FormData();
   formData.append('file', file);
@@ -62,6 +63,7 @@ export async function uploadAgentData(
   formData.append('agentType', agentType);
   formData.append('callType', callType);
   if (confirmCorrections) formData.append('confirmCorrections', 'true');
+  if (confirmContactCorrections) formData.append('confirmContactCorrections', 'true');
 
   const res = await api.post('/upload/agent-data', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

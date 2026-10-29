@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { uploadAgentData, downloadErrorReport, downloadUnifiedForUpload } from '../../services/api';
-import { University, UploadResult, AgentUseCase, AGENT_USE_CASES, AGENT_DISPLAY_NAMES, UNIVERSITIES, UNIVERSITY_NAMES, TimezoneWarning } from '../../types';
+import { University, UploadResult, AgentUseCase, AGENT_USE_CASES, AGENT_DISPLAY_NAMES, UNIVERSITIES, UNIVERSITY_NAMES, TimezoneWarning, ContactCountryWarning } from '../../types';
 import Button from '../Common/Button';
 
 interface TimezoneConfirmModalProps {
@@ -67,6 +67,83 @@ function TimezoneConfirmModal({ warnings, onConfirm, onCancel }: TimezoneConfirm
   );
 }
 
+interface ContactCountryConfirmModalProps {
+  warnings: ContactCountryWarning[];
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ContactCountryConfirmModal({ warnings, onConfirm, onCancel }: ContactCountryConfirmModalProps) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div className="flex items-start gap-3 px-6 pt-5 pb-4 border-b border-gray-100">
+          <div className="shrink-0 w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center mt-0.5">
+            <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.948V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Contact Number Country Mismatch</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              The country code in <strong>user_contact</strong> doesn't match <strong>user_country_of_residence</strong>.
+              Do you want to update the country and timezone to match the contact number's country code?
+            </p>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 space-y-3 max-h-72 overflow-y-auto">
+          {warnings.map((w, i) => (
+            <div key={i} className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 text-sm">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs text-gray-500">{w.rowCount} row{w.rowCount === 1 ? '' : 's'}</span>
+              </div>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 w-28 shrink-0">Contact suggests:</span>
+                  <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">{w.detectedCountry}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 w-28 shrink-0">File has country:</span>
+                  <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono">{w.suppliedCountry}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 w-28 shrink-0">File has timezone:</span>
+                  <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono">{w.suppliedTimezone}</span>
+                </div>
+                {w.suggestedTimezone && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 w-28 shrink-0">Will update to:</span>
+                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">{w.detectedCountry}</span>
+                    <span className="text-gray-400">+</span>
+                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-mono">{w.suggestedTimezone}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            No — keep as-is in file
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+          >
+            Yes — update country &amp; timezone
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FileUpload() {
   const { user } = useAuth();
 
@@ -95,6 +172,7 @@ export default function FileUpload() {
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState('');
   const [timezoneWarnings, setTimezoneWarnings] = useState<TimezoneWarning[] | null>(null);
+  const [contactCountryWarnings, setContactCountryWarnings] = useState<ContactCountryWarning[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const programs = university ? UNIVERSITIES[university] : [];
@@ -122,17 +200,26 @@ export default function FileUpload() {
     }
   };
 
-  const doUpload = async (confirmCorrections = false) => {
+  const doUpload = async (confirmCorrections = false, confirmContactCorrections = false) => {
     if (!file || !university || !program || !agentType || !callType) return;
     setIsUploading(true);
     setError('');
     setResult(null);
     setTimezoneWarnings(null);
+    setContactCountryWarnings(null);
 
     try {
-      const res = await uploadAgentData(file, university, program, agentType, callType, confirmCorrections);
-      // If backend returned timezone warnings and hasn't generated the unified file yet, show modal
-      if (res.timezoneWarnings && res.timezoneWarnings.length > 0 && !res.unifiedCsvAvailable) {
+      const res = await uploadAgentData(file, university, program, agentType, callType, confirmCorrections, confirmContactCorrections);
+
+      // Phase 1: contact-country mismatch takes priority
+      if (res.contactCountryWarnings && res.contactCountryWarnings.length > 0 && !res.unifiedCsvAvailable) {
+        setContactCountryWarnings(res.contactCountryWarnings);
+        // Stash timezone warnings for phase 2 if any
+        if (res.timezoneWarnings && res.timezoneWarnings.length > 0) {
+          setTimezoneWarnings(res.timezoneWarnings);
+        }
+      // Phase 2: timezone mismatch
+      } else if (res.timezoneWarnings && res.timezoneWarnings.length > 0 && !res.unifiedCsvAvailable) {
         setTimezoneWarnings(res.timezoneWarnings);
       } else {
         setResult(res);
@@ -147,10 +234,19 @@ export default function FileUpload() {
     }
   };
 
-  const handleUpload = () => doUpload(false);
+  const handleUpload = () => doUpload(false, false);
+
+  // User confirmed contact-country correction → re-upload with confirmContactCorrections=true
+  // If timezone warnings were also present, they'll come back and show the timezone modal
+  const handleConfirmContactCorrections = () => {
+    setContactCountryWarnings(null);
+    setTimezoneWarnings(null);
+    doUpload(false, true);
+  };
+
   const handleConfirmCorrections = () => {
     setTimezoneWarnings(null);
-    doUpload(true);
+    doUpload(true, true);
   };
 
   const handleReset = () => {
@@ -158,12 +254,20 @@ export default function FileUpload() {
     setResult(null);
     setError('');
     setTimezoneWarnings(null);
+    setContactCountryWarnings(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
     <div className="space-y-6">
-      {timezoneWarnings && timezoneWarnings.length > 0 && (
+      {contactCountryWarnings && contactCountryWarnings.length > 0 && (
+        <ContactCountryConfirmModal
+          warnings={contactCountryWarnings}
+          onConfirm={handleConfirmContactCorrections}
+          onCancel={() => { setContactCountryWarnings(null); setTimezoneWarnings(null); }}
+        />
+      )}
+      {!contactCountryWarnings && timezoneWarnings && timezoneWarnings.length > 0 && (
         <TimezoneConfirmModal
           warnings={timezoneWarnings}
           onConfirm={handleConfirmCorrections}
